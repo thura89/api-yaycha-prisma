@@ -15,14 +15,13 @@ router.get("/posts", async (req, res) => {
       include: {
         user: true,
         comments: true,
+        likes: true,
       },
       orderBy: { id: "desc" },
       take: 20,
     });
 
     res.json(data);
-    // setTimeout(() => {
-    // }, 3000);
   } catch (err) {
     res.status(500).json({ error: err });
   }
@@ -39,9 +38,11 @@ router.get("/posts/:id", async (req, res) => {
       where: { id: Number(id) },
       include: {
         user: true,
+        likes: true,
         comments: {
           include: {
             user: true,
+            likes: true,
           },
         },
       },
@@ -81,12 +82,12 @@ router.post("/posts", auth, async (req, res) => {
   const data = await prisma.post.findUnique({
     where: {
       id: Number(post.id),
-      include: {
-        user: true,
-        comments: {
-          include: {
-            user: true,
-          },
+    },
+    include: {
+      user: true,
+      comments: {
+        include: {
+          user: true,
         },
       },
     },
@@ -121,6 +122,65 @@ router.delete("/posts/:id", auth, isOwner("post"), async (req, res) => {
   res.sendStatus(204);
 });
 
+/**
+ * Post Like
+ */
+
+router.post("/like/posts/:id", auth, async (req, res) => {
+  const { id } = req.params;
+  const user = res.locals.user;
+  const like = await prisma.postLike.create({
+    data: {
+      userId: Number(user.id),
+      postId: Number(id),
+    },
+  });
+
+  return res.json({ like });
+});
+
+/**
+ * Get Post Like
+ */
+
+router.get("/like/posts/:id", auth, async (req, res) => {
+  const { id } = req.params;
+  const user = res.locals.user;
+
+  const data = await prisma.postLike.findMany({
+    where: {
+      postId: Number(id),
+    },
+    include: {
+      user: {
+        include: {
+          followers: true,
+          following: true,
+        },
+      },
+    },
+  });
+  return res.json({ data });
+});
+
+/**
+ * Post Unlike
+ */
+
+router.delete("/unlike/posts/:id", auth, async (req, res) => {
+  const { id } = req.params;
+  const user = res.locals.user;
+
+  await prisma.postLike.deleteMany({
+    where: {
+      postId: Number(id),
+      userId: Number(user.id),
+    },
+  });
+
+  res.json({ msg: `Unlike post id - ${id}` });
+});
+
 // ============= End Post Session ================= //
 
 /**
@@ -139,8 +199,8 @@ router.post("/comments", auth, async (req, res) => {
   const comment = await prisma.comment.create({
     data: {
       content: content,
-      userId: user.id,
-      postId: postId,
+      userId: Number(user.id),
+      postId: Number(postId),
     },
   });
 
@@ -163,4 +223,94 @@ router.delete("/comments/:id", auth, isOwner("comment"), async (req, res) => {
   res.sendStatus(204);
 });
 
+/**
+ * Comment Like
+ */
+
+router.post("/like/comments/:id", auth, async (req, res) => {
+  const { id } = req.params;
+  const user = res.locals.user;
+
+  const like = await prisma.commentLike.create({
+    data: {
+      userId: Number(user.id),
+      commentId: Number(id),
+    },
+  });
+  res.json({ like });
+});
+
+/**
+ * Get comment like
+ */
+
+router.get("/like/comments/:id", auth, async (req, res) => {
+  const { id } = req.params;
+  const user = res.locals.user;
+  const data = await prisma.commentLike.findMany({
+    where: {
+      commentId: Number(id),
+    },
+    include: {
+      user: {
+        include: {
+          followers: true,
+          following: true,
+        },
+      },
+    },
+  });
+  res.json({ data });
+});
+/**
+ * Unlike Comment
+ */
+router.delete("/unlike/comments/:id", auth, async (req, res) => {
+  const { id } = req.params;
+  const user = res.locals.user;
+
+  await prisma.commentLike.deleteMany({
+    where: {
+      userId: Number(user.id),
+      commentId: Number(id),
+    },
+  });
+
+  res.json({ msg: `Unlike comment id = ${id}` });
+});
+
+/**
+ * Fetch Following Post
+ */
+
+router.get("/following/posts", auth, async (req, res) => {
+  const user = res.locals.user;
+  
+  const follow = await prisma.follow.findMany({
+    where: {
+      followerId: Number(user.id),
+    },
+  });
+  
+  const users = follow.map(item => item.followingId);
+
+  const data = await prisma.post.findMany({
+    where: {
+      userId: {
+        in: users,
+      },
+    },
+    include: {
+      user: true,
+      likes: true,
+      comments: true,
+    },
+    orderBy: {
+      id: "desc",
+    },
+    take: 20,
+  });
+
+  return res.json(data);
+});
 module.exports = { contentRouter: router };

@@ -8,15 +8,6 @@ const { auth } = require("../middlewares/auth");
 const prisma = require("../prismaClient");
 
 /**
- * Auth User Varify
- */
-// router.get("/verify", async (req, res) => {
-//   // const user = res.locals.user;
-//   // res.json(user);
-//   return "here";
-// });
-
-/**
  * User Login
  */
 
@@ -50,6 +41,8 @@ router.get("/users", async (req, res) => {
       include: {
         posts: true,
         comments: true,
+        followers: true,
+        following: true,
       },
       orderBy: {
         id: "desc",
@@ -76,6 +69,8 @@ router.get("/users/:id", async (req, res) => {
       include: {
         posts: true,
         comments: true,
+        followers: true,
+        following: true,
       },
     });
     res.json(data);
@@ -112,6 +107,64 @@ router.post("/users", async (req, res) => {
   } catch (e) {
     res.status(500).json({ msg: e.message });
   }
+});
+
+/**
+ * Follow User
+ */
+
+router.post("/follow/:id", auth, async (req, res) => {
+  const { id } = req.params;
+  const user = res.locals.user;
+
+  const data = await prisma.follow.create({
+    data: {
+      followerId: Number(user.id),
+      followingId: Number(id),
+    },
+  });
+  if (data.ok) {
+    res.json(data);
+  }
+});
+
+/**
+ * Delete Follow User
+ */
+
+router.delete("/follow/:id", auth, async (req, res) => {
+  const { id } = req.params;
+  const user = res.locals.user;
+
+  await prisma.follow.deleteMany({
+    where: {
+      followerId: Number(user.id),
+      followingId: Number(id),
+    },
+  });
+
+  res.json({ msg: `Unfollow user ${id}` });
+});
+
+/**
+ * Search
+ */
+
+router.get("/search", auth, async (req, res) => {
+  const { query } = req.query;
+  const data = await prisma.user.findMany({
+    where: {
+      name: {
+        contains: query,
+      },
+    },
+    include: {
+      followers: true,
+      following: true,
+    },
+    take: 20,
+  });
+  res.json(data);
 });
 
 module.exports = { userRouter: router };
